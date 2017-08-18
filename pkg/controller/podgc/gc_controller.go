@@ -91,7 +91,7 @@ func (gcc *PodGCController) gc() {
 		glog.Errorf("Error while listing all Pods: %v", err)
 		return
 	}
-	if gcc.terminatedPodThreshold > 0 {
+	if gcc.terminatedPodThreshold >= 0 {
 		gcc.gcTerminated(pods)
 	}
 	gcc.gcOrphaned(pods)
