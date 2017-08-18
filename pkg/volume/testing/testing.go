@@ -32,8 +32,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/uuid"
+	clientset "k8s.io/client-go/kubernetes"
 	utiltesting "k8s.io/client-go/util/testing"
-	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
 	"k8s.io/kubernetes/pkg/cloudprovider"
 	"k8s.io/kubernetes/pkg/util/io"
 	"k8s.io/kubernetes/pkg/util/mount"
@@ -50,10 +50,25 @@ type fakeVolumeHost struct {
 	cloud      cloudprovider.Interface
 	mounter    mount.Interface
 	writer     io.Writer
+	nodeLabels map[string]string
 }
 
 func NewFakeVolumeHost(rootDir string, kubeClient clientset.Interface, plugins []VolumePlugin) *fakeVolumeHost {
-	host := &fakeVolumeHost{rootDir: rootDir, kubeClient: kubeClient, cloud: nil}
+	return newFakeVolumeHost(rootDir, kubeClient, plugins, nil)
+}
+
+func NewFakeVolumeHostWithCloudProvider(rootDir string, kubeClient clientset.Interface, plugins []VolumePlugin, cloud cloudprovider.Interface) *fakeVolumeHost {
+	return newFakeVolumeHost(rootDir, kubeClient, plugins, cloud)
+}
+
+func NewFakeVolumeHostWithNodeLabels(rootDir string, kubeClient clientset.Interface, plugins []VolumePlugin, labels map[string]string) *fakeVolumeHost {
+	volHost := newFakeVolumeHost(rootDir, kubeClient, plugins, nil)
+	volHost.nodeLabels = labels
+	return volHost
+}
+
+func newFakeVolumeHost(rootDir string, kubeClient clientset.Interface, plugins []VolumePlugin, cloud cloudprovider.Interface) *fakeVolumeHost {
+	host := &fakeVolumeHost{rootDir: rootDir, kubeClient: kubeClient, cloud: cloud}
 	host.mounter = &mount.FakeMounter{}
 	host.writer = &io.StdWriter{}
 	host.pluginMgr.InitPlugins(plugins, host)
@@ -141,7 +156,10 @@ func (f *fakeVolumeHost) GetConfigMapFunc() func(namespace, name string) (*v1.Co
 }
 
 func (f *fakeVolumeHost) GetNodeLabels() (map[string]string, error) {
-	return map[string]string{"test-label": "test-value"}, nil
+	if f.nodeLabels == nil {
+		f.nodeLabels = map[string]string{"test-label": "test-value"}
+	}
+	return f.nodeLabels, nil
 }
 
 func ProbeVolumePlugins(config VolumeConfig) []VolumePlugin {

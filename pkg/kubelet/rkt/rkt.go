@@ -62,10 +62,10 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/types"
 	"k8s.io/kubernetes/pkg/kubelet/util/format"
 	"k8s.io/kubernetes/pkg/securitycontext"
-	utilexec "k8s.io/kubernetes/pkg/util/exec"
 	"k8s.io/kubernetes/pkg/util/selinux"
 	utilstrings "k8s.io/kubernetes/pkg/util/strings"
 	"k8s.io/kubernetes/pkg/util/term"
+	utilexec "k8s.io/utils/exec"
 )
 
 const (
@@ -437,6 +437,14 @@ func setIsolators(app *appctypes.App, c *v1.Container, ctx *v1.SecurityContext) 
 		default:
 			return fmt.Errorf("resource type not supported: %v", name)
 		}
+	}
+
+	if ok := securitycontext.AddNoNewPrivileges(ctx); ok {
+		isolator, err := newNoNewPrivilegesIsolator(true)
+		if err != nil {
+			return err
+		}
+		isolators = append(isolators, *isolator)
 	}
 
 	mergeIsolators(app, isolators)
@@ -839,7 +847,7 @@ func (r *Runtime) newAppcRuntimeApp(pod *v1.Pod, podIP string, c v1.Container, r
 		return err
 	}
 
-	// Create additional mount for termintation message path.
+	// Create additional mount for termination message path.
 	mount, err := r.makeContainerLogMount(opts, &c)
 	if err != nil {
 		return err
@@ -1295,13 +1303,13 @@ func (r *Runtime) generateEvents(runtimePod *kubecontainer.Pod, reason string, f
 		uuid := utilstrings.ShortenString(id.uuid, 8)
 		switch reason {
 		case "Created":
-			r.recorder.Eventf(events.ToObjectReference(ref), v1.EventTypeNormal, events.CreatedContainer, "Created with rkt id %v", uuid)
+			r.recorder.Eventf(ref, v1.EventTypeNormal, events.CreatedContainer, "Created with rkt id %v", uuid)
 		case "Started":
-			r.recorder.Eventf(events.ToObjectReference(ref), v1.EventTypeNormal, events.StartedContainer, "Started with rkt id %v", uuid)
+			r.recorder.Eventf(ref, v1.EventTypeNormal, events.StartedContainer, "Started with rkt id %v", uuid)
 		case "Failed":
-			r.recorder.Eventf(events.ToObjectReference(ref), v1.EventTypeWarning, events.FailedToStartContainer, "Failed to start with rkt id %v with error %v", uuid, failure)
+			r.recorder.Eventf(ref, v1.EventTypeWarning, events.FailedToStartContainer, "Failed to start with rkt id %v with error %v", uuid, failure)
 		case "Killing":
-			r.recorder.Eventf(events.ToObjectReference(ref), v1.EventTypeNormal, events.KillingContainer, "Killing with rkt id %v", uuid)
+			r.recorder.Eventf(ref, v1.EventTypeNormal, events.KillingContainer, "Killing with rkt id %v", uuid)
 		default:
 			glog.Errorf("rkt: Unexpected event %q", reason)
 		}
@@ -2620,4 +2628,17 @@ func convertKubePortMappings(portMappings []kubecontainer.PortMapping) ([]appcty
 	}
 
 	return containerPorts, hostPorts
+}
+
+func newNoNewPrivilegesIsolator(v bool) (*appctypes.Isolator, error) {
+	b := fmt.Sprintf(`{"name": "%s", "value": %t}`, appctypes.LinuxNoNewPrivilegesName, v)
+
+	i := &appctypes.Isolator{
+		Name: appctypes.LinuxNoNewPrivilegesName,
+	}
+	if err := i.UnmarshalJSON([]byte(b)); err != nil {
+		return nil, err
+	}
+
+	return i, nil
 }

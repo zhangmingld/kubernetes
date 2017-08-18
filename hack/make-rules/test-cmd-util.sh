@@ -71,6 +71,7 @@ statefulsets="statefulsets"
 static="static"
 storageclass="storageclass"
 subjectaccessreviews="subjectaccessreviews"
+selfsubjectaccessreviews="selfsubjectaccessreviews"
 thirdpartyresources="thirdpartyresources"
 customresourcedefinitions="customresourcedefinitions"
 daemonsets="daemonsets"
@@ -686,7 +687,7 @@ run_pod_tests() {
   kube::test::get_object_assert pods "{{range.items}}{{$id_field}}:{{end}}" 'valid-pod:'
 
   ## Patch can modify a local object
-  kubectl patch --local -f pkg/api/validation/testdata/v1/validPod.yaml --patch='{"spec": {"restartPolicy":"Never"}}' -o jsonpath='{.spec.restartPolicy}' | grep -q "Never"
+  kubectl patch --local -f pkg/kubectl/validation/testdata/v1/validPod.yaml --patch='{"spec": {"restartPolicy":"Never"}}' -o jsonpath='{.spec.restartPolicy}' | grep -q "Never"
 
   ## Patch pod can change image
   # Command
@@ -797,7 +798,7 @@ __EOF__
   chmod +x /tmp/tmp-editor.sh
   # Pre-condition: valid-pod POD has image nginx
   kube::test::get_object_assert pods "{{range.items}}{{$image_field}}:{{end}}" 'nginx:'
-  EDITOR=/tmp/tmp-editor.sh kubectl edit "${kube_flags[@]}" pods/valid-pod
+  [[ "$(EDITOR=/tmp/tmp-editor.sh kubectl edit "${kube_flags[@]}" pods/valid-pod --output-patch=true | grep Patch:)" ]]
   # Post-condition: valid-pod POD has image gcr.io/google_containers/serve_hostname
   kube::test::get_object_assert pods "{{range.items}}{{$image_field}}:{{end}}" 'gcr.io/google_containers/serve_hostname:'
   # cleaning
@@ -1183,7 +1184,7 @@ run_kubectl_run_tests() {
 
   create_and_use_new_namespace
   kube::log::status "Testing kubectl run"
-  ## kubectl run should create deployments or jobs
+  ## kubectl run should create deployments, jobs or cronjob
   # Pre-Condition: no Job exists
   kube::test::get_object_assert jobs "{{range.items}}{{$id_field}}:{{end}}" ''
   # Command
@@ -1196,6 +1197,7 @@ run_kubectl_run_tests() {
   kubectl delete jobs pi "${kube_flags[@]}"
   # Post-condition: no pods exist.
   kube::test::get_object_assert pods "{{range.items}}{{$id_field}}:{{end}}" ''
+
   # Pre-Condition: no Deployment exists
   kube::test::get_object_assert deployment "{{range.items}}{{$id_field}}:{{end}}" ''
   # Command
@@ -1216,6 +1218,17 @@ run_kubectl_run_tests() {
   kube::test::if_has_string "${output_message}" '2'
   # Clean up
   kubectl delete deployment nginx-apps "${kube_flags[@]}"
+
+  # TODO: enable batch/v1beta1 by default before 1.8 release, after issues
+  # with CronJobs existing in multiple versions at once is solved
+  # # Pre-Condition: no Job exists
+  # kube::test::get_object_assert cronjobs "{{range.items}}{{$id_field}}:{{end}}" ''
+  # # Command
+  # kubectl run pi --schedule="*/5 * * * *" --generator=cronjob/v1beta1 "--image=$IMAGE_PERL" --restart=OnFailure -- perl -Mbignum=bpi -wle 'print bpi(20)' "${kube_flags[@]}"
+  # # Post-Condition: CronJob "pi" is created
+  # kube::test::get_object_assert cronjobs "{{range.items}}{{$id_field}}:{{end}}" 'pi:'
+  # # Clean up
+  # kubectl delete cronjobs pi "${kube_flags[@]}"
 
   set +o nounset
   set +o errexit
@@ -1646,7 +1659,7 @@ run_non_native_resource_tests() {
   kubectl "${kube_flags[@]}" delete bars test --cascade=false
 
   # Make sure it's gone
-  kube::test::get_object_assert bars "{{range.items}}{{$id_field}}:{{end}}" ''
+  kube::test::wait_object_assert bars "{{range.items}}{{$id_field}}:{{end}}" ''
 
   # Test that we can create single item via apply
   kubectl "${kube_flags[@]}" apply -f hack/testdata/TPR/foo.yaml
@@ -2280,6 +2293,9 @@ run_service_tests() {
   # prove role=master
   kube::test::get_object_assert 'services redis-master' "{{range$service_selector_field}}{{.}}:{{end}}" "redis:master:backend:"
 
+  # Set selector of a local file without talking to the server
+  kubectl set selector -f examples/guestbook/redis-master-service.yaml role=padawan --local -o yaml "${kube_flags[@]}"
+  ! kubectl set selector -f examples/guestbook/redis-master-service.yaml role=padawan --dry-run -o yaml "${kube_flags[@]}"
   # Set command to change the selector.
   kubectl set selector -f examples/guestbook/redis-master-service.yaml role=padawan
   # prove role=padawan
@@ -2287,6 +2303,10 @@ run_service_tests() {
   # Set command to reset the selector back to the original one.
   kubectl set selector -f examples/guestbook/redis-master-service.yaml app=redis,role=master,tier=backend
   # prove role=master
+  kube::test::get_object_assert 'services redis-master' "{{range$service_selector_field}}{{.}}:{{end}}" "redis:master:backend:"
+  # Show dry-run works on running selector
+  kubectl set selector services redis-master role=padawan --dry-run -o yaml "${kube_flags[@]}"
+  ! kubectl set selector services redis-master role=padawan --local -o yaml "${kube_flags[@]}"
   kube::test::get_object_assert 'services redis-master' "{{range$service_selector_field}}{{.}}:{{end}}" "redis:master:backend:"
 
   ### Dump current redis-master service
@@ -2825,6 +2845,10 @@ run_deployment_tests() {
   kube::test::get_object_assert deployment "{{range.items}}{{$deployment_image_field}}:{{end}}" "${IMAGE_DEPLOYMENT_R2}:"
   kube::test::get_object_assert deployment "{{range.items}}{{$deployment_second_image_field}}:{{end}}" "${IMAGE_PERL}:"
   # Set image of all containers of the deployment
+  kubectl set image deployment nginx-deployment "*"="${IMAGE_DEPLOYMENT_R1}" "${kube_flags[@]}"
+  kube::test::get_object_assert deployment "{{range.items}}{{$deployment_image_field}}:{{end}}" "${IMAGE_DEPLOYMENT_R1}:"
+  kube::test::get_object_assert deployment "{{range.items}}{{$deployment_second_image_field}}:{{end}}" "${IMAGE_DEPLOYMENT_R1}:"
+  # Set image of all containners of the deployment again when image not change
   kubectl set image deployment nginx-deployment "*"="${IMAGE_DEPLOYMENT_R1}" "${kube_flags[@]}"
   kube::test::get_object_assert deployment "{{range.items}}{{$deployment_image_field}}:{{end}}" "${IMAGE_DEPLOYMENT_R1}:"
   kube::test::get_object_assert deployment "{{range.items}}{{$deployment_second_image_field}}:{{end}}" "${IMAGE_DEPLOYMENT_R1}:"
@@ -3913,6 +3937,58 @@ run_kubectl_sort_by_tests() {
   kubectl get pods --sort-by="{metadata.name}"
   kubectl get pods --sort-by="{metadata.creationTimestamp}"
 
+  ### sort-by should works if pod exists
+  # Create POD
+  # Pre-condition: no POD exists
+  kube::test::get_object_assert pods "{{range.items}}{{$id_field}}:{{end}}" ''
+  # Command
+  kubectl create "${kube_flags[@]}" -f test/fixtures/doc-yaml/admin/limitrange/valid-pod.yaml
+  # Post-condition: valid-pod is created
+  kube::test::get_object_assert pods "{{range.items}}{{$id_field}}:{{end}}" 'valid-pod:'
+  # Check output of sort-by
+  output_message=$(kubectl get pods --sort-by="{metadata.name}")
+  kube::test::if_has_string "${output_message}" "valid-pod"
+  ### Clean up
+  # Pre-condition: valid-pod exists
+  kube::test::get_object_assert pods "{{range.items}}{{$id_field}}:{{end}}" 'valid-pod:'
+  # Command
+  kubectl delete "${kube_flags[@]}" pod valid-pod --grace-period=0 --force
+  # Post-condition: valid-pod doesn't exist
+  kube::test::get_object_assert pods "{{range.items}}{{$id_field}}:{{end}}" ''
+
+  ### sort-by should works by sorting by name
+  # Create three PODs
+  # Pre-condition: no POD exists
+  kube::test::get_object_assert pods "{{range.items}}{{$id_field}}:{{end}}" ''
+  # Command
+  kubectl create "${kube_flags[@]}" -f hack/testdata/sorted-pods/sorted-pod1.yaml
+  # Post-condition: sorted-pod1 is created
+  kube::test::get_object_assert pods "{{range.items}}{{$id_field}}:{{end}}" 'sorted-pod1:'
+  # Command
+  kubectl create "${kube_flags[@]}" -f hack/testdata/sorted-pods/sorted-pod2.yaml
+  # Post-condition: sorted-pod1 is created
+  kube::test::get_object_assert pods "{{range.items}}{{$id_field}}:{{end}}" 'sorted-pod1:sorted-pod2:'
+  # Command
+  kubectl create "${kube_flags[@]}" -f hack/testdata/sorted-pods/sorted-pod3.yaml
+  # Post-condition: sorted-pod1 is created
+  kube::test::get_object_assert pods "{{range.items}}{{$id_field}}:{{end}}" 'sorted-pod1:sorted-pod2:sorted-pod3:'
+
+  # Check output of sort-by '{metadata.name}'
+  output_message=$(kubectl get pods --sort-by="{metadata.name}")
+  kube::test::if_sort_by_has_correct_order "${output_message}" "sorted-pod1:sorted-pod2:sorted-pod3:"
+
+  # Check output of sort-by '{metadata.labels.name}'
+  output_message=$(kubectl get pods --sort-by="{metadata.labels.name}")
+  kube::test::if_sort_by_has_correct_order "${output_message}" "sorted-pod3:sorted-pod2:sorted-pod1:"
+
+  ### Clean up
+  # Pre-condition: valid-pod exists
+  kube::test::get_object_assert pods "{{range.items}}{{$id_field}}:{{end}}" 'sorted-pod1:sorted-pod2:sorted-pod3:'
+  # Command
+  kubectl delete "${kube_flags[@]}" pod --grace-period=0 --force --all
+  # Post-condition: valid-pod doesn't exist
+  kube::test::get_object_assert pods "{{range.items}}{{$id_field}}:{{end}}" ''
+
   set +o nounset
   set +o errexit
 }
@@ -4061,13 +4137,20 @@ run_plugins_tests() {
   kube::test::if_has_not_string "${output_message}" 'The first child'
 
   # plugin env
-  output_message=$(KUBECTL_PLUGINS_PATH=test/fixtures/pkg/kubectl/plugins kubectl plugin env 2>&1)
+  output_message=$(KUBECTL_PLUGINS_PATH=test/fixtures/pkg/kubectl/plugins kubectl plugin env -h 2>&1)
+  kube::test::if_has_string "${output_message}" "This is a flag 1"
+  kube::test::if_has_string "${output_message}" "This is a flag 2"
+  kube::test::if_has_string "${output_message}" "This is a flag 3"
+  output_message=$(KUBECTL_PLUGINS_PATH=test/fixtures/pkg/kubectl/plugins kubectl plugin env --test1=value1 -t value2 2>&1)
   kube::test::if_has_string "${output_message}" 'KUBECTL_PLUGINS_CURRENT_NAMESPACE'
   kube::test::if_has_string "${output_message}" 'KUBECTL_PLUGINS_CALLER'
   kube::test::if_has_string "${output_message}" 'KUBECTL_PLUGINS_DESCRIPTOR_COMMAND=./env.sh'
   kube::test::if_has_string "${output_message}" 'KUBECTL_PLUGINS_DESCRIPTOR_SHORT_DESC=The plugin envs plugin'
   kube::test::if_has_string "${output_message}" 'KUBECTL_PLUGINS_GLOBAL_FLAG_KUBECONFIG'
   kube::test::if_has_string "${output_message}" 'KUBECTL_PLUGINS_GLOBAL_FLAG_REQUEST_TIMEOUT=0'
+  kube::test::if_has_string "${output_message}" 'KUBECTL_PLUGINS_LOCAL_FLAG_TEST1=value1'
+  kube::test::if_has_string "${output_message}" 'KUBECTL_PLUGINS_LOCAL_FLAG_TEST2=value2'
+  kube::test::if_has_string "${output_message}" 'KUBECTL_PLUGINS_LOCAL_FLAG_TEST3=default'
 
   set +o nounset
   set +o errexit
@@ -4125,8 +4208,9 @@ runTests() {
     -s "http://127.0.0.1:${API_PORT}"
   )
 
+  # token defined in hack/testdata/auth-tokens.csv
   kube_flags_with_token=(
-    -s "https://127.0.0.1:${SECURE_API_PORT}" --token=admin/system:masters --insecure-skip-tls-verify=true
+    -s "https://127.0.0.1:${SECURE_API_PORT}" --token=admin-token --insecure-skip-tls-verify=true
   )
 
   if [[ -z "${ALLOW_SKEW:-}" ]]; then
@@ -4485,6 +4569,27 @@ runTests() {
     record_command run_authorization_tests
   fi
 
+  # kubectl auth can-i
+  # kube-apiserver is started with authorization mode AlwaysAllow, so kubectl can-i always returns yes
+  if kube::test::if_supports_resource "${subjectaccessreviews}" ; then
+    output_message=$(kubectl auth can-i '*' '*' 2>&1 "${kube_flags[@]}")
+    kube::test::if_has_string "${output_message}" "yes"
+
+    output_message=$(kubectl auth can-i get pods --subresource=log 2>&1 "${kube_flags[@]}")
+    kube::test::if_has_string "${output_message}" "yes"
+
+    output_message=$(kubectl auth can-i get invalid_resource 2>&1 "${kube_flags[@]}")
+    kube::test::if_has_string "${output_message}" "the server doesn't have a resource type"
+
+    output_message=$(kubectl auth can-i get /logs/ 2>&1 "${kube_flags[@]}")
+    kube::test::if_has_string "${output_message}" "yes"
+
+    output_message=$(! kubectl auth can-i get /logs/ --subresource=log 2>&1 "${kube_flags[@]}")
+    kube::test::if_has_string "${output_message}" "subresource can not be used with nonResourceURL"
+
+    output_message=$(kubectl auth can-i list jobs.batch/bar -n foo --quiet 2>&1 "${kube_flags[@]}")
+    kube::test::if_empty_string "${output_message}"
+  fi
 
   #####################
   # Retrieve multiple #

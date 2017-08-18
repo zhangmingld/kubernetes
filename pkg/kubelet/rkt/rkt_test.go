@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -46,8 +47,8 @@ import (
 	"k8s.io/kubernetes/pkg/kubelet/network/kubenet"
 	nettest "k8s.io/kubernetes/pkg/kubelet/network/testing"
 	"k8s.io/kubernetes/pkg/kubelet/types"
-	utilexec "k8s.io/kubernetes/pkg/util/exec"
-	"strings"
+	"k8s.io/utils/exec"
+	fakeexec "k8s.io/utils/exec/testing"
 )
 
 func mustMarshalPodManifest(man *appcschema.PodManifest) []byte {
@@ -937,6 +938,7 @@ func baseImageManifest(t *testing.T) *appcschema.ImageManifest {
 func baseAppWithRootUserGroup(t *testing.T) *appctypes.App {
 	app := baseApp(t)
 	app.User, app.Group = "0", "0"
+	app.Isolators = append(app.Isolators)
 	return app
 }
 
@@ -1415,8 +1417,8 @@ func TestGenerateRunCommand(t *testing.T) {
 			HostName:    tt.hostName,
 			Err:         tt.err,
 		}
-		rkt.execer = &utilexec.FakeExec{CommandScript: []utilexec.FakeCommandAction{func(cmd string, args ...string) utilexec.Cmd {
-			return utilexec.InitFakeCmd(&utilexec.FakeCmd{}, cmd, args...)
+		rkt.execer = &fakeexec.FakeExec{CommandScript: []fakeexec.FakeCommandAction{func(cmd string, args ...string) exec.Cmd {
+			return fakeexec.InitFakeCmd(&fakeexec.FakeCmd{}, cmd, args...)
 		}}}
 
 		// a command should be created of this form, but the returned command shouldn't be called (asserted by having no expectations on it)

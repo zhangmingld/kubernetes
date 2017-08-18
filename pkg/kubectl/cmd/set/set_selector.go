@@ -31,7 +31,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
-	"k8s.io/kubernetes/pkg/util/i18n"
+	"k8s.io/kubernetes/pkg/kubectl/util/i18n"
 )
 
 // SelectorOptions is the start of the data required to perform the operation.  As new fields are added, add them here instead of
@@ -116,6 +116,10 @@ func (o *SelectorOptions) Complete(f cmdutil.Factory, cmd *cobra.Command, args [
 	mapper, _ := f.Object()
 	o.mapper = mapper
 	o.encoder = f.JSONEncoder()
+	o.resources, o.selector, err = getResourcesAndSelector(args)
+	if err != nil {
+		return err
+	}
 
 	o.builder = f.NewBuilder(!o.local).
 		ContinueOnError().
@@ -135,8 +139,6 @@ func (o *SelectorOptions) Complete(f cmdutil.Factory, cmd *cobra.Command, args [
 	o.ClientForMapping = func(mapping *meta.RESTMapping) (resource.RESTClient, error) {
 		return f.ClientForMapping(mapping)
 	}
-
-	o.resources, o.selector, err = getResourcesAndSelector(args)
 	return err
 }
 

@@ -6,6 +6,12 @@ docs/admin/kube-apiserver.md
 docs/admin/kube-controller-manager.md
 docs/admin/kube-proxy.md
 docs/admin/kube-scheduler.md
+docs/admin/kubefed.md
+docs/admin/kubefed_init.md
+docs/admin/kubefed_join.md
+docs/admin/kubefed_options.md
+docs/admin/kubefed_unjoin.md
+docs/admin/kubefed_version.md
 docs/admin/kubelet.md
 docs/man/man1/cloud-controller-manager.1
 docs/man/man1/kube-apiserver.1
@@ -100,9 +106,9 @@ docs/man/man1/kubectl-scale.1
 docs/man/man1/kubectl-set-image.1
 docs/man/man1/kubectl-set-resources.1
 docs/man/man1/kubectl-set-selector.1
+docs/man/man1/kubectl-set-serviceaccount.1
 docs/man/man1/kubectl-set-subject.1
 docs/man/man1/kubectl-set.1
-docs/man/man1/kubectl-stop.1
 docs/man/man1/kubectl-taint.1
 docs/man/man1/kubectl-top-node.1
 docs/man/man1/kubectl-top-pod.1
@@ -195,6 +201,7 @@ docs/user-guide/kubectl/kubectl_set.md
 docs/user-guide/kubectl/kubectl_set_image.md
 docs/user-guide/kubectl/kubectl_set_resources.md
 docs/user-guide/kubectl/kubectl_set_selector.md
+docs/user-guide/kubectl/kubectl_set_serviceaccount.md
 docs/user-guide/kubectl/kubectl_set_subject.md
 docs/user-guide/kubectl/kubectl_taint.md
 docs/user-guide/kubectl/kubectl_top.md
@@ -244,7 +251,6 @@ docs/yaml/kubectl/kubectl_run-container.yaml
 docs/yaml/kubectl/kubectl_run.yaml
 docs/yaml/kubectl/kubectl_scale.yaml
 docs/yaml/kubectl/kubectl_set.yaml
-docs/yaml/kubectl/kubectl_stop.yaml
 docs/yaml/kubectl/kubectl_taint.yaml
 docs/yaml/kubectl/kubectl_top.yaml
 docs/yaml/kubectl/kubectl_uncordon.yaml

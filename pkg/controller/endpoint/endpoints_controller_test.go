@@ -28,14 +28,14 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/informers"
+	clientset "k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	utiltesting "k8s.io/client-go/util/testing"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/testapi"
 	endptspkg "k8s.io/kubernetes/pkg/api/v1/endpoints"
-	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset"
-	informers "k8s.io/kubernetes/pkg/client/informers/informers_generated/externalversions"
 	"k8s.io/kubernetes/pkg/controller"
 )
 
@@ -173,6 +173,70 @@ func TestSyncEndpointsItemsPreserveNoSelector(t *testing.T) {
 	})
 	endpoints.syncService(ns + "/foo")
 	endpointsHandler.ValidateRequestCount(t, 0)
+}
+
+func TestSyncEndpointsExistingNilSubsets(t *testing.T) {
+	ns := metav1.NamespaceDefault
+	testServer, endpointsHandler := makeTestServer(t, ns)
+	defer testServer.Close()
+	endpoints := newController(testServer.URL)
+	endpoints.endpointsStore.Add(&v1.Endpoints{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "foo",
+			Namespace:       ns,
+			ResourceVersion: "1",
+		},
+		Subsets: nil,
+	})
+	endpoints.serviceStore.Add(&v1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: ns},
+		Spec: v1.ServiceSpec{
+			Selector: map[string]string{"foo": "bar"},
+			Ports:    []v1.ServicePort{{Port: 80}},
+		},
+	})
+	endpoints.syncService(ns + "/foo")
+	endpointsHandler.ValidateRequestCount(t, 0)
+}
+
+func TestSyncEndpointsExistingEmptySubsets(t *testing.T) {
+	ns := metav1.NamespaceDefault
+	testServer, endpointsHandler := makeTestServer(t, ns)
+	defer testServer.Close()
+	endpoints := newController(testServer.URL)
+	endpoints.endpointsStore.Add(&v1.Endpoints{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            "foo",
+			Namespace:       ns,
+			ResourceVersion: "1",
+		},
+		Subsets: []v1.EndpointSubset{},
+	})
+	endpoints.serviceStore.Add(&v1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: ns},
+		Spec: v1.ServiceSpec{
+			Selector: map[string]string{"foo": "bar"},
+			Ports:    []v1.ServicePort{{Port: 80}},
+		},
+	})
+	endpoints.syncService(ns + "/foo")
+	endpointsHandler.ValidateRequestCount(t, 0)
+}
+
+func TestSyncEndpointsNewNoSubsets(t *testing.T) {
+	ns := metav1.NamespaceDefault
+	testServer, endpointsHandler := makeTestServer(t, ns)
+	defer testServer.Close()
+	endpoints := newController(testServer.URL)
+	endpoints.serviceStore.Add(&v1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: ns},
+		Spec: v1.ServiceSpec{
+			Selector: map[string]string{"foo": "bar"},
+			Ports:    []v1.ServicePort{{Port: 80}},
+		},
+	})
+	endpoints.syncService(ns + "/foo")
+	endpointsHandler.ValidateRequestCount(t, 1)
 }
 
 func TestCheckLeftoverEndpoints(t *testing.T) {

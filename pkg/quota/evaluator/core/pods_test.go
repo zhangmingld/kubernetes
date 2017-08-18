@@ -20,8 +20,8 @@ import (
 	"testing"
 
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/client/clientset_generated/clientset/fake"
 	"k8s.io/kubernetes/pkg/quota"
 )
 
@@ -42,7 +42,7 @@ func TestPodConstraintsFunc(t *testing.T) {
 					}},
 				},
 			},
-			err: `spec.initContainers[0].resources.limits: Invalid value: "1m": must be greater than or equal to cpu request`,
+			err: `spec.initContainers[0].resources.requests: Invalid value: "2m": must be less than or equal to cpu limit`,
 		},
 		"container resource invalid": {
 			pod: &api.Pod{
@@ -55,7 +55,7 @@ func TestPodConstraintsFunc(t *testing.T) {
 					}},
 				},
 			},
-			err: `spec.containers[0].resources.limits: Invalid value: "1m": must be greater than or equal to cpu request`,
+			err: `spec.containers[0].resources.requests: Invalid value: "2m": must be less than or equal to cpu limit`,
 		},
 		"init container resource missing": {
 			pod: &api.Pod{

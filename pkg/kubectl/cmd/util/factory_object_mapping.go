@@ -40,7 +40,6 @@ import (
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/federation/apis/federation"
 	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/api/validation"
 	"k8s.io/kubernetes/pkg/apis/apps"
 	"k8s.io/kubernetes/pkg/apis/batch"
 	"k8s.io/kubernetes/pkg/apis/extensions"
@@ -49,6 +48,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubectl"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/util/openapi"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
+	"k8s.io/kubernetes/pkg/kubectl/validation"
 	"k8s.io/kubernetes/pkg/printers"
 	printersinternal "k8s.io/kubernetes/pkg/printers/internalversion"
 )
@@ -445,7 +445,7 @@ func (f *ring1Factory) SwaggerSchema(gvk schema.GroupVersionKind) (*swagger.ApiD
 // schema will be cached separately for different client / server combinations.
 // Note, the cache will not be invalidated if the server changes its open API schema without
 // changing the server version.
-func (f *ring1Factory) OpenAPISchema(cacheDir string) (*openapi.Resources, error) {
+func (f *ring1Factory) OpenAPISchema(cacheDir string) (openapi.Resources, error) {
 	discovery, err := f.clientAccessFactory.DiscoveryClient()
 	if err != nil {
 		return nil, err
